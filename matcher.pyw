@@ -33,6 +33,7 @@ timeoutvar=IntVar(value=1000)
 msg=StringVar(value='加载中...')
 
 exefn=None
+sourcefn=None
 data=[]
 timeout=None
 output={}
@@ -148,8 +149,12 @@ def exeget():
         filetypes=[('EXE Files','*.exe')],
     )
     if fn and os.path.isfile(fn):
-        global exefn
+        global exefn, sourcefn
         exefn=fn
+        if os.path.isfile(os.path.splitext(fn)[0]+'.cpp'):
+            sourcefn=os.path.splitext(fn)[0]+'.cpp'
+        else:
+            sourcefn=None
         exebtn['text']='程序 ✓'
         tk.title('pyMatcher [ %s ]'%os.path.basename(fn))
         if data:
@@ -197,6 +202,8 @@ def judge():
 
         datacnt=len(data)
         accnt=0
+        judgeanyway=False
+        
         for pos,val in enumerate(data):
             msg.set('正在评测 %d/%d...'%(pos+1,datacnt))
             name,i,o=val
@@ -232,6 +239,15 @@ def judge():
             if not o.endswith('\n'): o+='\n'
             if not pout.endswith('\n'): pout+='\n'
             t=int(1000*(t2-t1))
+            if not judgeanyway and pout and '请按任意键继续' in pout:
+                if not messagebox.askyesno('pyMatcher',
+                    '您可能忘记移除 system("pause") 语句\n仍然继续评测吗？'):
+                    msg.set('评测已中断')
+                    tree.item(name,values=['评测中断','...'])
+                    return
+                else:
+                    judgeanyway=True
+            
             if killed or t>timeout*1000:
                 tree.item(name,values=['× 运行超时',t])
             elif ret:
@@ -270,6 +286,11 @@ def judge():
     if timeout<0:
         messagebox.showerror('pyMatcher','延时错误')
         return
+
+    if sourcefn and os.stat(sourcefn).st_mtime>os.stat(exefn).st_mtime:
+        if not messagebox.askyesno('pyMatcher',
+            '您可能忘记编译新修改的代码\n仍然继续评测吗？'):
+            return
 
     msg.set('正在启动评测...')
     global output
