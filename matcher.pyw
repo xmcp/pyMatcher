@@ -19,7 +19,7 @@ from tkinter import *
 from tkinter.ttk import *
 from tkinter import filedialog,messagebox
 
-import os
+import os, shutil
 import threading
 import subprocess
 import time
@@ -36,6 +36,7 @@ exefn=None
 sourcefn=None
 data=[]
 timeout=None
+inputt={}
 output={}
 acoutput={}
 
@@ -78,7 +79,7 @@ def getresult(*_):
         if event.keysym not in ('Alt_L','Alt_R','F4'):
             return 'break'
 
-    def init():
+    def init12():
         for pos in range(max(len1,len2)):
             if pos<len1:
                 t1.insert('end','%d\t'%(pos+1),'lineno')
@@ -101,46 +102,62 @@ def getresult(*_):
                 t1.insert('end','\n','bad' if data2[pos].rstrip() else 'soso')
                 t2.insert('end','%d\t'%(pos+1),'lineno')
                 t2.insert('end',data2[pos]+'↓\n')
-        tl.title(name)
+
+    def init0():
+        for pos in range(len(data0)):
+            t0.insert('end','%d\t'%pos,'lineno')
+            t0.insert('end',data0[pos]+'↓\n')
     
     name=tree.focus()
     if name in acoutput and name in output:
         tl=Toplevel(tk)
-        tl.title('%s [ 正在加载... ]'%name)
+        tl.title(name)
         tl.rowconfigure(1,weight=1)
         tl.columnconfigure(0,weight=1)
         tl.columnconfigure(2,weight=1)
+        tl.columnconfigure(4,weight=1)
         tl.focus_force()
 
-        Label(tl,text='程序输出').grid(row=0,column=0)
-        Label(tl,text='正确输出').grid(row=0,column=2)
+        Label(tl,text='输入').grid(row=0,column=0)
+        Label(tl,text='程序输出').grid(row=0,column=2)
+        Label(tl,text='正确输出').grid(row=0,column=4)
 
-        sbar=Scrollbar(tl,orient=VERTICAL)
-        sbar.grid(row=1,column=1,sticky='ns')
+        t0=Text(tl,font='Consolas -12',width=40)
+        t0.grid(row=1,column=0,sticky='nswe')
+        tmpbar=Scrollbar(tl,orient=VERTICAL,command=t0.yview)
+        tmpbar.grid(row=1,column=1,sticky='ns')
+        t0['yscrollcommand']=tmpbar.set
+        t0.tag_config('lineno',foreground='#555',background='#ddd')
+        t0.bind('<KeyPress>',breaker)
         
-        t1=Text(tl,font='Consolas -12',width=50)
-        t1.grid(row=1,column=0,sticky='nswe')
+        t1=Text(tl,font='Consolas -12',width=40)
+        t1.grid(row=1,column=2,sticky='nswe')
         t1.tag_config('good',foreground='#333',background='#bdf0b6')
         t1.tag_config('bad',foreground='#333',background='#f2bcbc')
         t1.tag_config('soso',foreground='#333',background='#b7cbf7')
-        t1.tag_config('lineno',foreground='#666',background='#eee')
+        t1.tag_config('lineno',foreground='#555',background='#ddd')
         t1.bind('<KeyPress>',breaker)
+
+        sbar=Scrollbar(tl,orient=VERTICAL)
+        sbar.grid(row=1,column=3,sticky='ns')
         
-        t2=Text(tl,font='Consolas -12',width=50)
-        t2.grid(row=1,column=2,sticky='nswe')
-        t2.tag_config('lineno',foreground='#666',background='#eee')
+        t2=Text(tl,font='Consolas -12',width=40)
+        t2.grid(row=1,column=4,sticky='nswe')
+        t2.tag_config('lineno',foreground='#555',background='#ddd')
         t2.bind('<KeyPress>',breaker)
 
         t1['yscrollcommand']=callback1
         t2['yscrollcommand']=callback2
         sbar['command']=scrollall
 
+        data0=inputt[name].splitlines()
         data1=output[name].splitlines()
         data2=acoutput[name].splitlines()
         len1=len(data1)
         len2=len(data2)
 
-        threading.Thread(target=init).start()
+        threading.Thread(target=init0).start()
+        threading.Thread(target=init12).start()
 
 
 def exeget():
@@ -169,6 +186,7 @@ def dtget():
     dtdir=filedialog.askdirectory(title='选择数据目录')
     if dtdir and os.path.isdir(dtdir):
         data.clear()
+        inputt.clear()
         acoutput.clear()
         tree.delete(*tree.get_children())
         os.chdir(dtdir)
@@ -209,6 +227,7 @@ def judge():
             name,i,o=val
             tree.item(name,values=['正在运行...','...'])
             tree.see(name)
+            inputt[name]=i
 
             killed=False
             if timeout:
@@ -289,8 +308,10 @@ def judge():
 
     if sourcefn and os.stat(sourcefn).st_mtime>os.stat(exefn).st_mtime:
         if not messagebox.askyesno('pyMatcher',
-            '您可能忘记编译新修改的代码\n仍然继续评测吗？'):
+            '源代码修改时间新于选手程序修改时间\n您可能忘记编译新修改的代码\n仍然继续评测吗？'):
             return
+        else:
+            shutil.copystat(sourcefn,exefn)
 
     msg.set('正在启动评测...')
     global output
