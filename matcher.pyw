@@ -293,11 +293,13 @@ def judge():
 
     def wrapper():
         try:
+            timeoutentry.state(['disabled'])
             real_judge()
         except Exception as e:
             messagebox.showerror('pyMatcher',repr(e))
             raise
         finally:
+            timeoutentry.state(['!disabled'])
             jgbtn.state(['!disabled'])
 
     global timeout
