@@ -16,6 +16,19 @@ setup(name='pyMatcher',
       options = {"build_exe": build_exe_options},
       executables=executables)
 
+print('===== CLEANING UP =====')
+
 shutil.copyfile('matcher.pyw','build/exe.win32-3.4/matcher.pyw')
+
 os.remove('build/exe.win32-3.4/unicodedata.pyd')
+os.remove('build/exe.win32-3.4/_hashlib.pyd')
+shutil.rmtree('build/exe.win32-3.4/tcl/encoding')
+shutil.rmtree('build/exe.win32-3.4/tcl/tzdata')
+shutil.rmtree('build/exe.win32-3.4/tcl/msgs')
+shutil.rmtree('build/exe.win32-3.4/tk/demos')
+shutil.rmtree('build/exe.win32-3.4/tk/images')
+shutil.rmtree('build/exe.win32-3.4/tk/msgs')
+
 os.rename('build/exe.win32-3.4','build/pyMatcher-exe.win32-3.4')
+
+print('===== DONE =====')

@@ -190,7 +190,9 @@ def dtget():
         acoutput.clear()
         tree.delete(*tree.get_children())
         os.chdir(dtdir)
-        for infn in os.listdir():
+        fns=os.listdir()
+        maxfnlen=max((len(x) for x in fns))
+        for infn in sorted(fns,key=lambda x: x.rjust(maxfnlen,' ')):
             tmp=os.path.splitext(infn)
             if tmp[1]=='.in' and os.path.isfile(tmp[0]+'.out'):
                 with open(infn,'r') as inf, open(tmp[0]+'.out','r') as outf:
