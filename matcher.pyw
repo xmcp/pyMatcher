@@ -163,7 +163,7 @@ def getresult(*_):
 def exeget():
     fn=filedialog.askopenfilename(
         title='打开程序文件...',
-        filetypes=[('EXE Files','*.exe')],
+        filetypes=[('选手程序文件','*.exe')],
     )
     if fn and os.path.isfile(fn):
         global exefn, sourcefn
@@ -183,24 +183,31 @@ def exeget():
         messagebox.showerror('pyMatcher','程序文件不存在')
 
 def dtget():
+    def outfn(basename):
+        return basename+'.out' if os.path.isfile(basename+'.out') else \
+            basename+'.ans' if os.path.isfile(basename+'.ans') else None
+
     dtdir=filedialog.askdirectory(title='选择数据目录')
     if dtdir and os.path.isdir(dtdir):
         data.clear()
         inputt.clear()
         acoutput.clear()
         tree.delete(*tree.get_children())
+        
         os.chdir(dtdir)
         fns=os.listdir()
         maxfnlen=max((len(x) for x in fns))
         for infn in sorted(fns,key=lambda x: x.rjust(maxfnlen,' ')):
-            tmp=os.path.splitext(infn)
-            if tmp[1]=='.in' and os.path.isfile(tmp[0]+'.out'):
-                with open(infn,'r') as inf, open(tmp[0]+'.out','r') as outf:
-                    dt=[tmp[0],inf.read(),outf.read()]
-                    tree.insert('','end',tmp[0],text='%s (%s -> %s)'%\
-                        (tmp[0],psize(len(dt[1])),psize(len(dt[2]))))
+            inbase,inext=os.path.splitext(infn)
+            out=outfn(inbase)
+            if inext=='.in' and out:
+                with open(infn,'r') as inf, open(out,'r') as outf:
+                    dt=[inbase,inf.read(),outf.read()]
+                    tree.insert('','end',inbase,text='%s (%s -> %s)'%\
+                        (inbase,psize(len(dt[1])),psize(len(dt[2])))
+                    )
                     data.append(dt)
-                    acoutput[tmp[0]]=dt[2]
+                    acoutput[inbase]=dt[2]
         if data:
             dtbtn['text']='数据 ✓'
             if exefn:
@@ -209,7 +216,10 @@ def dtget():
             else:
                 msg.set('请选择选手程序')
         else:
-            messagebox.showerror('pyMatcher','没有找到数据')
+            messagebox.showerror('pyMatcher',
+                '没有找到数据\n'
+                '输入文件的扩展名应为 .in；输出文件的扩展名应为 .out 或 .ans，且文件名需和输入文件对应'
+            )
     elif dtdir:
         messagebox.showerror('pyMatcher','数据目录不存在')
 
