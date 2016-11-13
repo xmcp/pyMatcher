@@ -17,7 +17,9 @@ LICENSE='''
 from tkinter import *
 from tkinter.ttk import *
 from tkinter import filedialog,messagebox
+from dnd_wrapper import TkDND
 
+import ast
 import os, shutil
 import sys
 import threading
@@ -25,12 +27,18 @@ import subprocess
 import time
 
 tk=Tk()
+rootdnd=TkDND(tk)
 tk.title('pyMatcher')
 tk.rowconfigure(0,weight=1)
 tk.columnconfigure(0,weight=1)
 
 init_exe_path=os.path.expanduser('~/desktop')
 init_data_path=os.path.expanduser('~/desktop')
+
+def _parse_list(li):
+    tk.eval('set pym_items {%s}'%li)
+    ret=tk.eval(''' set r {}; foreach k $pym_items {lappend r "'$k'"}; set r "\[[join $r ,]\]" ''')
+    return ast.literal_eval(ret)
 
 def about():
     tl=Toplevel(tk)
@@ -77,6 +85,7 @@ class Panel:
         self._deleted=False
 
         self.b=Frame(tk)
+        dnd=TkDND(self.b)
         self.b.rowconfigure(1,weight=1)
         self.b.columnconfigure(0,weight=1)
         book.add(self.b,text=' 新评测 ')
@@ -127,13 +136,28 @@ class Panel:
         Button(msgf, text='关于本程序', command=about).grid(row=0, column=1)
         Button(msgf, text='X', width=3, command=self._delpanel).grid(row=0, column=2, padx=2)
 
-        self.msg.set('请选择选手程序和数据目录')
+        dnd.bindtarget(self.b,self._dnd_callback,'text/uri-list')
+        self.msg.set('请选择选手程序和数据目录，或者拖拽到这里')
 
     def _delpanel(self):
         book.forget(self.b)
         self._deleted=True
         self.b.destroy()
         addpanel()
+
+    def _dnd_callback(self,event):
+        fns=_parse_list(event.data)
+        exes=[fn for fn in fns if os.path.isfile(fn) and fn.endswith('.exe')]
+        dts=[fn for fn in fns if os.path.isdir(fn)]
+        if len(exes)+len(dts)!=len(fns):
+            return messagebox.showerror('导入失败', '存在无效的程序或目录名：\n\n%s' % '\n'.join(fns))
+        elif len(exes)>2 or len(dts)>2:
+            messagebox.showerror('导入失败', '最多只能选择一个程序和一个数据目录：\n\n%s' % '\n'.join(fns))
+        else:
+            for exe in exes:
+                self.exeget(exe)
+            for dt in dts:
+                self.dtget(dt)
 
     def getresult(self,*_):
         def scrollall(*_):
@@ -423,11 +447,25 @@ class Panel:
         book.tab(self.b,text=' %s …… '%os.path.basename(self.exefn))
         threading.Thread(target=wrapper).start()
 
+def import_data(event):
+    fns=_parse_list(event.data)
+    if all([os.path.isdir(fn) for fn in fns]):
+        for fn in fns:
+            p=Panel()
+            p.dtget(fn)
+    elif all([os.path.isfile(fn) and fn.endswith('.exe') for fn in fns]):
+        for fn in fns:
+            p=Panel()
+            p.exeget(fn)
+    else:
+        messagebox.showerror('导入失败','存在无效的程序或目录名：\n\n%s'%'\n'.join(fns))
+
 book=Notebook(tk)
 book.grid(row=0,column=0,sticky='nswe')
 book.rowconfigure(0,weight=1)
 book.columnconfigure(0,weight=1)
 book.enable_traversal()
+rootdnd.bindtarget(book,import_data,'text/uri-list')
 
 addpanel()
 

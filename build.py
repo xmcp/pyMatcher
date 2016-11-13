@@ -19,6 +19,7 @@ setup(name='pyMatcher',
 print('===== CLEANING UP =====')
 
 shutil.copyfile('matcher.pyw','build/exe.win32-3.4/matcher.pyw')
+shutil.copytree('tkdnd2.8','build/exe.win32-3.4/tkdnd2.8')
 
 os.remove('build/exe.win32-3.4/unicodedata.pyd')
 os.remove('build/exe.win32-3.4/_hashlib.pyd')
