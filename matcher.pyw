@@ -1,5 +1,4 @@
 #coding=utf-8
-__author__='xmcp'
 LICENSE='''
             DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
                     Version 2, December 2004
@@ -20,6 +19,7 @@ from tkinter.ttk import *
 from tkinter import filedialog,messagebox
 
 import os, shutil
+import sys
 import threading
 import subprocess
 import time
@@ -46,15 +46,21 @@ def about():
     t.grid(row=0,column=0,sticky='nswe')
 
 def psize(size):
-    b=size%1024
-    k=int(size/1024)%1024
-    m=int(size/1024/1024)
+    b=size%1000
+    k=int(size/1000)%1000
+    m=int(size/1000/1000)
     if m and k:
-        return '%d %d %d 字节'%(m,k,b)
+        return '%d %3d %3d 字节'%(m,k,b)
     elif k:
-        return '%d %d 字节'%(k,b)
+        return '%d %3d 字节'%(k,b)
     else:
         return '%d 字节'%b
+
+_cur_panel=None
+def addpanel():
+    global _cur_panel
+    if not _cur_panel or (_cur_panel.exebtn and _cur_panel.data) or _cur_panel._deleted:
+        _cur_panel=Panel()
 
 class Panel:
     def __init__(self):
@@ -68,6 +74,7 @@ class Panel:
         self.inputt={}
         self.output={}
         self.acoutput={}
+        self._deleted=False
 
         self.b=Frame(tk)
         self.b.rowconfigure(1,weight=1)
@@ -117,10 +124,17 @@ class Panel:
         msgf.columnconfigure(0, weight=1)
 
         Label(msgf, textvariable=self.msg).grid(row=0, column=0, padx=5, sticky='we')
-        Button(msgf, text='关于本程序', command=about).grid(row=0, column=1, padx=2)
+        Button(msgf, text='关于本程序', command=about).grid(row=0, column=1)
+        Button(msgf, text='X', width=3, command=self._delpanel).grid(row=0, column=2, padx=2)
 
         self.msg.set('请选择选手程序和数据目录')
-    
+
+    def _delpanel(self):
+        book.forget(self.b)
+        self._deleted=True
+        self.b.destroy()
+        addpanel()
+
     def getresult(self,*_):
         def scrollall(*_):
             t1.yview(*_)
@@ -216,13 +230,14 @@ class Panel:
             threading.Thread(target=init0).start()
             threading.Thread(target=init12).start()
         
-    def exeget(self):
+    def exeget(self,fn=None):
         global init_exe_path
-        fn=filedialog.askopenfilename(
-            title='打开程序文件...',
-            filetypes=[('选手程序文件','*.exe')],
-            initialdir=init_exe_path,
-        )
+        if fn is None:
+            fn=filedialog.askopenfilename(
+                title='打开程序文件...',
+                filetypes=[('选手程序文件','*.exe')],
+                initialdir=init_exe_path,
+            )
         if fn and os.path.isfile(fn):
             self.exefn=fn
             init_exe_path=os.path.split(fn)[0]
@@ -235,22 +250,23 @@ class Panel:
             if self.data:
                 self.jgbtn.state(['!disabled'])
                 self.msg.set('请输入时间限制，然后点击评测按钮')
-                Panel()
+                addpanel()
             else:
                 self.msg.set('请选择数据目录')
         elif fn:
             messagebox.showerror('pyMatcher','程序文件不存在')
 
-    def dtget(self):
+    def dtget(self,dtdir=None):
         global init_data_path
         def outfn(basename):
             return basename+'.out' if os.path.isfile(basename+'.out') else \
                 basename+'.ans' if os.path.isfile(basename+'.ans') else None
 
-        dtdir=filedialog.askdirectory(
-            title='选择数据目录',
-            initialdir=init_data_path,
-        )
+        if dtdir is None:
+            dtdir=filedialog.askdirectory(
+                title='选择数据目录',
+                initialdir=init_data_path,
+            )
         if dtdir and os.path.isdir(dtdir):
             self.data.clear()
             self.inputt.clear()
@@ -277,7 +293,7 @@ class Panel:
                 if self.exefn:
                     self.jgbtn.state(['!disabled'])
                     self.msg.set('请输入时间限制，然后点击评测按钮')
-                    Panel()
+                    addpanel()
                 else:
                     self.msg.set('请选择选手程序')
             else:
@@ -301,10 +317,10 @@ class Panel:
             
             for pos,val in enumerate(self.data):
                 self.msg.set('正在评测 %d/%d...'%(pos+1,datacnt))
-                name,i,o=val
-                self.tree.item(name,values=['正在运行...','...'])
-                self.tree.see(name)
-                self.inputt[name]=i
+                name_, i, o=val
+                self.tree.item(name_, values=['正在运行...', '...'])
+                self.tree.see(name_)
+                self.inputt[name_]=i
 
                 killed=False
                 if timeout:
@@ -320,7 +336,7 @@ class Panel:
                 try:
                     pout,perr=p.communicate(i.encode('gbk','ignore'))
                 except OSError:
-                    self.tree.item(name,values=['× 无法发送STDIN',''])
+                    self.tree.item(name_, values=['× 无法发送STDIN', ''])
                     continue
                 
                 pout=pout.decode('gbk','ignore')
@@ -329,8 +345,8 @@ class Panel:
                 t2=time.time()
                 if timeout:
                     timer.cancel()
-                self.tree.item(name,values=['正在评测...','...'])
-                self.output[name]=pout
+                self.tree.item(name_, values=['正在评测...', '...'])
+                self.output[name_]=pout
 
                 if not o.endswith('\n'): o+='\n'
                 if not pout.endswith('\n'): pout+='\n'
@@ -339,30 +355,30 @@ class Panel:
                     if not messagebox.askyesno('pyMatcher',
                         '您可能忘记移除 system("pause") 语句\n仍然继续评测吗？'):
                         self.msg.set('评测已中断')
-                        self.tree.item(name,values=['评测中断','...'])
+                        self.tree.item(name_, values=['评测中断', '...'])
                         book.tab(self.b,text=' %s '%os.path.basename(self.exefn))
                         return
                     else:
                         judgeanyway=True
                 
                 if killed or t>timeout*1000:
-                    self.tree.item(name,values=['× 运行超时',t])
+                    self.tree.item(name_, values=['× 运行超时', t])
                 elif ret:
-                    self.tree.item(name,values=['× 返回值为%d'%ret,t])
+                    self.tree.item(name_, values=['× 返回值为%d' % ret, t])
                 elif perr:
-                    self.tree.item(name,values=['× STDERR不为空',t])
+                    self.tree.item(name_, values=['× STDERR不为空', t])
                 elif not pout:
-                    self.tree.item(name,values=['× 没有输出',t])
+                    self.tree.item(name_, values=['× 没有输出', t])
                 elif [x.rstrip() for x in o.rstrip().splitlines()]==\
                     [x.rstrip() for x in pout.rstrip().splitlines()]:
-                    self.tree.item(name,values=['✓ 通过',t])
+                    self.tree.item(name_, values=['✓ 通过', t])
                     accnt+=1
                 elif [x.replace(' ','').replace('\t','') for x in o.strip().split('\n')]==\
                         [x.replace(' ','').replace('\t','') for x in pout.strip().split('\n')]:
-                    self.tree.item(name,values=['✓ 通过（格式错误）',t])
+                    self.tree.item(name_, values=['✓ 通过（格式错误）', t])
                     accnt+=1
                 else:
-                    self.tree.item(name,values=['× 结果错误',t])
+                    self.tree.item(name_, values=['× 结果错误', t])
 
             if datacnt==accnt:
                 self.msg.set('您通过了全部 %d 组数据'%datacnt)
@@ -378,6 +394,8 @@ class Panel:
                 messagebox.showerror('pyMatcher',repr(e))
                 raise
             finally:
+                self.exebtn.state(['!disabled'])
+                self.dtbtn.state(['!disabled'])
                 self.timeoutentry.state(['!disabled'])
                 self.jgbtn.state(['!disabled'])
 
@@ -409,6 +427,16 @@ book=Notebook(tk)
 book.grid(row=0,column=0,sticky='nswe')
 book.rowconfigure(0,weight=1)
 book.columnconfigure(0,weight=1)
+book.enable_traversal()
 
-Panel()
+addpanel()
+
+args=sys.argv[1:]
+for exefn,datadir,timeout in list(zip(args[::3],args[1::3],args[2::3])):
+    p=Panel()
+    p.exeget(exefn)
+    p.dtget(datadir)
+    p.timeoutvar.set(timeout)
+    book.select(p.b)
+
 mainloop()
