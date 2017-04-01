@@ -26,6 +26,16 @@ import threading
 import subprocess
 import time
 
+# http://stackoverflow.com/questions/24130623/using-python-subprocess-popen-cant-prevent-exe-stopped-working-prompt
+if sys.platform.startswith("win"):
+    import ctypes
+    SEM_NOGPFAULTERRORBOX = 0x0002 # From MSDN
+    ctypes.windll.kernel32.SetErrorMode(SEM_NOGPFAULTERRORBOX);
+    CREATE_NO_WINDOW = 0x08000000    # From Windows API
+    subprocess_flags = CREATE_NO_WINDOW
+else:
+    subprocess_flags = 0
+
 tk=Tk()
 rootdnd=TkDND(tk)
 tk.title('pyMatcher')
@@ -351,8 +361,9 @@ class Panel:
                     timer=threading.Timer(timeout,killer)
                  
                 p=subprocess.Popen(
-                    executable=self.exefn,args=[],shell=True,
-                    stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                    executable=self.exefn,args=[],shell=True,creationflags=subprocess_flags,
+                    stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE
+                )
                 t1=time.time()
                 if timeout:
                     timer.start()
