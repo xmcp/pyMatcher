@@ -25,6 +25,7 @@ import sys
 import threading
 import subprocess
 import time
+import tempfile
 
 # http://stackoverflow.com/questions/24130623/using-python-subprocess-popen-cant-prevent-exe-stopped-working-prompt
 if sys.platform.startswith("win"):
@@ -36,6 +37,15 @@ if sys.platform.startswith("win"):
 else:
     subprocess_flags = 0
 
+class TempFile:
+    def __init__(self,prefix='',suffix='',content=''):
+        #self.name='z:/foo.bar.txt'
+        fd,self.name=tempfile.mkstemp(suffix=suffix,prefix=prefix,text=False)
+        os.write(fd,content.encode('utf-8'))
+        os.close(fd)
+    def __del__(self):
+        os.remove(self.name)
+    
 tk=Tk()
 rootdnd=TkDND(tk)
 tk.title('pyMatcher')
@@ -59,7 +69,7 @@ def about():
     t=Text(tl,font='Consolas -14',height=20,width=69,background='#eee')
     t.insert('end','\n  Source code available at https://github.com/xmcp/pyMatcher\n\n')
     t.insert('end',LICENSE)
-    t.insert('end','\n\n  Copyright (C) 2015 xmcp')
+    t.insert('end','\n\n  Copyright (C) 2017 xmcp')
     t['state']='disabled'
     t.grid(row=0,column=0,sticky='nswe')
 
@@ -80,7 +90,11 @@ def addpanel():
     if not _cur_panel or (_cur_panel.exebtn and _cur_panel.data) or _cur_panel._deleted:
         _cur_panel=Panel()
 
+tempfile_container={} # anti-gc
+        
 class Panel:
+    MAX_LINE=9999
+
     def __init__(self):
         self.timeoutvar=IntVar(value=1000)
         self.msg=StringVar(value='加载中...')
@@ -180,21 +194,16 @@ class Panel:
             sbar.set(a,*_)
             t1.yview_moveto(a)
 
-        def breaker(event):
-            if event.keysym not in ('Alt_L','Alt_R','F4'):
-                return 'break'
-
         def init12():
-            for pos in range(max(len1,len2)):
+            ln=max(len1,len2)
+            for pos in range(min(ln,self.MAX_LINE)):
                 if pos<len1:
                     t1.insert('end','%d\t'%(pos+1),'lineno')
                     if pos>=len2:
                         t1.insert('end',data1[pos]+'↓\n','bad' if data1[pos].rstrip() else 'soso')
-                        t2.insert('end','~\t','lineno')
-                        t2.insert('end','\n')
+                        t2.insert('end','~\t','lineno', '\n')
                     else:
-                        t2.insert('end','%d\t'%(pos+1),'lineno')
-                        t2.insert('end',data2[pos]+'↓\n')
+                        t2.insert('end','%d\t'%(pos+1),'lineno', data2[pos]+'↓\n')
                         if data1[pos].rstrip()==data2[pos].rstrip():
                             t1.insert('end',data1[pos]+'↓\n','good')
                         elif data1[pos].replace(' ','').replace('\t','')==\
@@ -203,15 +212,25 @@ class Panel:
                         else:
                             t1.insert('end',data1[pos]+'↓\n','bad')
                 else:
-                    t1.insert('end','~\t','lineno')
-                    t1.insert('end','\n','bad' if data2[pos].rstrip() else 'soso')
-                    t2.insert('end','%d\t'%(pos+1),'lineno')
-                    t2.insert('end',data2[pos]+'↓\n')
+                    t1.insert('end','~\t','lineno','\n', 'bad' if data2[pos].rstrip() else 'soso')
+                    t2.insert('end','%d\t'%(pos+1),'lineno', data2[pos]+'↓\n')
+            if ln>self.MAX_LINE:
+                t1.insert('end','……\t 共 %d 行\n'%len1,'lineno')
+                t2.insert('end','……\t 共 %d 行\n'%len2,'lineno')
 
         def init0():
-            for pos in range(len(data0)):
-                t0.insert('end','%d\t'%pos,'lineno')
-                t0.insert('end',data0[pos]+'↓\n')
+            len0=len(data0)
+            for pos in range(min(len0,self.MAX_LINE)):
+                t0.insert('end','%d\t'%(pos+1),'lineno', data0[pos]+'↓\n')
+            if len0>self.MAX_LINE:
+                t0.insert('end','……\t 共 %d 行\n'%len0,'lineno')
+        
+        def file_shower(txt,ext):
+            def wrapped():
+                f=TempFile(prefix='pymatcher_',suffix=ext,content=txt)
+                tempfile_container[f.name]=f
+                os.startfile(f.name)
+            return wrapped
         
         name=self.tree.focus()
         if name in self.acoutput and name in self.output:
@@ -223,9 +242,9 @@ class Panel:
             tl.columnconfigure(4,weight=1)
             tl.focus_force()
 
-            Label(tl,text='输入').grid(row=0,column=0)
-            Label(tl,text='程序输出').grid(row=0,column=2)
-            Label(tl,text='正确输出').grid(row=0,column=4)
+            Button(tl,text='输入',command=file_shower(self.inputt[name],'.in')).grid(row=0,column=0)
+            Button(tl,text='程序输出',command=file_shower(self.output[name],'.out')).grid(row=0,column=2)
+            Button(tl,text='正确输出',command=file_shower(self.acoutput[name],'.ans')).grid(row=0,column=4)
 
             t0=Text(tl,font='Consolas -12',width=40)
             t0.grid(row=1,column=0,sticky='nswe')
@@ -233,7 +252,6 @@ class Panel:
             tmpbar.grid(row=1,column=1,sticky='ns')
             t0['yscrollcommand']=tmpbar.set
             t0.tag_config('lineno',foreground='#555',background='#ddd')
-            t0.bind('<KeyPress>',breaker)
             
             t1=Text(tl,font='Consolas -12',width=40)
             t1.grid(row=1,column=2,sticky='nswe')
@@ -241,7 +259,6 @@ class Panel:
             t1.tag_config('bad',foreground='#333',background='#f2bcbc')
             t1.tag_config('soso',foreground='#333',background='#b7cbf7')
             t1.tag_config('lineno',foreground='#555',background='#ddd')
-            t1.bind('<KeyPress>',breaker)
 
             sbar=Scrollbar(tl,orient=VERTICAL)
             sbar.grid(row=1,column=3,sticky='ns')
@@ -249,7 +266,6 @@ class Panel:
             t2=Text(tl,font='Consolas -12',width=40)
             t2.grid(row=1,column=4,sticky='nswe')
             t2.tag_config('lineno',foreground='#555',background='#ddd')
-            t2.bind('<KeyPress>',breaker)
 
             t1['yscrollcommand']=callback1
             t2['yscrollcommand']=callback2
@@ -261,8 +277,13 @@ class Panel:
             len1=len(data1)
             len2=len(data2)
 
-            threading.Thread(target=init0).start()
-            threading.Thread(target=init12).start()
+            #threading.Thread(target=init0).start()
+            #threading.Thread(target=init12).start()
+            init0()
+            init12()
+            t0['state']='disabled'
+            t1['state']='disabled'
+            t2['state']='disabled'
         
     def exeget(self,fn=None):
         global init_exe_path
@@ -294,7 +315,8 @@ class Panel:
         global init_data_path
         def outfn(basename):
             return basename+'.out' if os.path.isfile(basename+'.out') else \
-                basename+'.ans' if os.path.isfile(basename+'.ans') else None
+                basename+'.ans' if os.path.isfile(basename+'.ans') else \
+                basename+'.std' if os.path.isfile(basename+'.std') else None
 
         if dtdir is None:
             dtdir=filedialog.askdirectory(
