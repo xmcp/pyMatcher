@@ -67,10 +67,10 @@ def psize(size):
     b=size%1000
     k=int(size/1000)%1000
     m=int(size/1000/1000)
-    if m and k:
-        return '%d %3d %3d 字节'%(m,k,b)
+    if m:
+        return '%d %03d %03d 字节'%(m,k,b)
     elif k:
-        return '%d %3d 字节'%(k,b)
+        return '%d %03d 字节'%(k,b)
     else:
         return '%d 字节'%b
 
