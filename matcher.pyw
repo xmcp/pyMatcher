@@ -17,34 +17,15 @@ LICENSE='''
 from tkinter import *
 from tkinter.ttk import *
 from tkinter import filedialog,messagebox
-from dnd_wrapper import TkDND
 
-import ast
+from dnd_wrapper import TkDND, _parse_list
+from utils import TempFile, pushd, subprocess_flags
+
 import os, shutil
 import sys
 import threading
 import subprocess
 import time
-import tempfile
-
-# http://stackoverflow.com/questions/24130623/using-python-subprocess-popen-cant-prevent-exe-stopped-working-prompt
-if sys.platform.startswith("win"):
-    import ctypes
-    SEM_NOGPFAULTERRORBOX = 0x0002 # From MSDN
-    ctypes.windll.kernel32.SetErrorMode(SEM_NOGPFAULTERRORBOX);
-    CREATE_NO_WINDOW = 0x08000000    # From Windows API
-    subprocess_flags = CREATE_NO_WINDOW
-else:
-    subprocess_flags = 0
-
-class TempFile:
-    def __init__(self,prefix='',suffix='',content=''):
-        #self.name='z:/foo.bar.txt'
-        fd,self.name=tempfile.mkstemp(suffix=suffix,prefix=prefix,text=False)
-        os.write(fd,content.encode('utf-8'))
-        os.close(fd)
-    def __del__(self):
-        os.remove(self.name)
     
 tk=Tk()
 rootdnd=TkDND(tk)
@@ -54,11 +35,6 @@ tk.columnconfigure(0,weight=1)
 
 init_exe_path=os.path.expanduser('~/desktop')
 init_data_path=os.path.expanduser('~/desktop')
-
-def _parse_list(li):
-    tk.eval('set pym_items {%s}'%li)
-    ret=tk.eval(''' set r {}; foreach k $pym_items {lappend r "'$k'"}; set r "\[[join $r ,]\]" ''')
-    return ast.literal_eval(ret)
 
 def about():
     tl=Toplevel(tk)
@@ -87,7 +63,7 @@ def psize(size):
 _cur_panel=None
 def addpanel():
     global _cur_panel
-    if not _cur_panel or (_cur_panel.exebtn and _cur_panel.data) or _cur_panel._deleted:
+    if not _cur_panel or (_cur_panel.exefn and _cur_panel.data) or _cur_panel._deleted:
         _cur_panel=Panel()
 
 tempfile_container={} # anti-gc
@@ -172,7 +148,7 @@ class Panel:
         addpanel()
 
     def _dnd_callback(self,event):
-        fns=_parse_list(event.data)
+        fns=_parse_list(tk,event.data)
         exes=[fn for fn in fns if os.path.isfile(fn) and fn.endswith('.exe')]
         dts=[fn for fn in fns if os.path.isdir(fn)]
         if len(exes)+len(dts)!=len(fns):
@@ -235,7 +211,7 @@ class Panel:
         
         def file_shower(txt,ext):
             def wrapped():
-                f=TempFile(prefix='pyMatcher_%s_'%name,suffix=ext,content=txt)
+                f=TempFile(prefix='%s_pyMatcher_'%name,suffix=ext,content=txt)
                 tempfile_container[f.name]=f
                 os.startfile(f.name)
             return wrapped
@@ -338,20 +314,20 @@ class Panel:
             self.tree.delete(*self.tree.get_children())
             init_data_path=dtdir
             
-            os.chdir(dtdir)
-            fns=os.listdir('.')
-            maxfnlen=max((len(x) for x in fns))
-            for infn in sorted(fns,key=lambda x: x.rjust(maxfnlen,' ')):
-                inbase,inext=os.path.splitext(infn)
-                out=outfn(inbase)
-                if inext=='.in' and out:
-                    with open(infn,'r') as inf, open(out,'r') as outf:
-                        dt=[inbase,inf.read(),outf.read()]
-                        self.tree.insert('','end',inbase,text='%s (%s -> %s)'%\
-                            (inbase,psize(len(dt[1])),psize(len(dt[2])))
-                        )
-                        self.data.append(dt)
-                        self.acoutput[inbase]=dt[2]
+            with pushd(dtdir):
+                fns=os.listdir('.')
+                maxfnlen=max((len(x) for x in fns))
+                for infn in sorted(fns,key=lambda x: x.rjust(maxfnlen,' ')):
+                    inbase,inext=os.path.splitext(infn)
+                    out=outfn(inbase)
+                    if inext=='.in' and out:
+                        with open(infn,'r') as inf, open(out,'r') as outf:
+                            dt=[inbase,inf.read(),outf.read()]
+                            self.tree.insert('','end',inbase,text='%s (%s -> %s)'%\
+                                (inbase,psize(len(dt[1])),psize(len(dt[2])))
+                            )
+                            self.data.append(dt)
+                            self.acoutput[inbase]=dt[2]
             if self.data:
                 self.dtbtn['text']='数据 ✓'
                 if self.exefn:
@@ -377,7 +353,7 @@ class Panel:
 
             datacnt=len(self.data)
             accnt=0
-            judgeanyway=False
+            out_already_exists=os.path.isfile(os.path.splitext(self.exefn)[0]+'.out')
             
             for pos,val in enumerate(self.data):
                 self.msg.set('正在评测 %d / %d...'%(pos+1,datacnt))
@@ -388,7 +364,7 @@ class Panel:
 
                 killed=False
                 if timeout:
-                    timer=threading.Timer(timeout,killer)
+                    timer=threading.Timer(timeout*1.5,killer)
                  
                 p=subprocess.Popen(
                     executable=self.exefn,args=[],shell=True,creationflags=subprocess_flags,
@@ -413,26 +389,29 @@ class Panel:
                 self.tree.item(name_, values=['正在评测...', '...'])
                 self.output[name_]=pout
 
-                if not o.endswith('\n'): o+='\n'
-                if not pout.endswith('\n'): pout+='\n'
-                t=int(1000*(t2-t1))
-                if not judgeanyway and pout and '请按任意键继续' in pout:
-                    if not messagebox.askyesno('pyMatcher',
-                        '您可能忘记移除 system("pause") 语句\n仍然继续评测吗？'):
+                if pos==0:
+                    if (
+                        pout and '请按任意键继续' in pout and not \
+                        messagebox.askyesno('pyMatcher','您可能没有移除 system("pause") 语句\n仍然继续评测吗？')
+                    ) or (
+                        not pout and not out_already_exists and os.path.isfile(os.path.splitext(self.exefn)[0]+'.out') and not \
+                        messagebox.askyesno('pyMatcher','您可能没有将结果输出到 STDOUT\n仍然继续评测吗？')
+                    ):
                         self.msg.set('评测已中断')
                         self.tree.item(name_, values=['评测中断', '...'])
                         book.tab(self.b,text=' %s '%os.path.basename(self.exefn))
                         return
-                    else:
-                        judgeanyway=True
                 
-                if killed or t>timeout*1000:
+                t=int(1000*(t2-t1))
+                if not o.endswith('\n'): o+='\n'
+                if not pout.endswith('\n'): pout+='\n'
+                if killed or (timeout and t>timeout*1000):
                     self.tree.item(name_, values=['× 超时', t])
                 elif ret:
                     self.tree.item(name_, values=['× 返回值为%d' % ret, t])
                 elif perr:
                     self.tree.item(name_, values=['× STDERR不为空', t])
-                elif not pout:
+                elif pout=='\n': # as we added a \n at the end
                     self.tree.item(name_, values=['× 没有输出', t])
                 elif [x.rstrip() for x in o.rstrip().splitlines()]==\
                     [x.rstrip() for x in pout.rstrip().splitlines()]:
@@ -441,8 +420,9 @@ class Panel:
                     continue # skip should_halt check later
                 elif [x.replace(' ','').replace('\t','') for x in o.strip().split('\n')]==\
                         [x.replace(' ','').replace('\t','') for x in pout.strip().split('\n')]:
-                    self.tree.item(name_, values=['✓ 通过（格式错误）', t])
+                    self.tree.item(name_, values=['✓ 格式错误', t])
                     accnt+=1
+                    continue
                 else:
                     self.tree.item(name_, values=['× 结果错误', t])
                     
@@ -458,7 +438,8 @@ class Panel:
         def wrapper():
             try:
                 self.timeoutentry.state(['disabled'])
-                real_judge()
+                with pushd(os.path.split(self.exefn)[0]):
+                    real_judge()
             except Exception as e:
                 messagebox.showerror('pyMatcher',repr(e))
                 raise
@@ -470,12 +451,12 @@ class Panel:
 
         timeout=self.timeoutvar.get()/1000
         if timeout<0:
-            messagebox.showerror('pyMatcher','延时错误')
+            messagebox.showerror('pyMatcher','超时时间无效')
             return
 
         if self.sourcefn and os.stat(self.sourcefn).st_mtime>os.stat(self.exefn).st_mtime:
             if not messagebox.askyesno('pyMatcher',
-                '源代码修改时间新于选手程序修改时间\n您可能忘记编译新修改的代码\n仍然继续评测吗？'):
+                '源代码修改时间新于选手程序修改时间\n您可能没有编译新修改的代码\n仍然继续评测吗？'):
                 return
             else:
                 shutil.copystat(self.sourcefn,self.exefn)
@@ -493,7 +474,7 @@ class Panel:
         threading.Thread(target=wrapper).start()
 
 def import_data(event):
-    fns=_parse_list(event.data)
+    fns=_parse_list(tk,event.data)
     if all([os.path.isdir(fn) for fn in fns]):
         for fn in fns:
             p=Panel()

@@ -18,7 +18,7 @@ setup(name='pyMatcher',
 
 print('===== CLEANING UP =====')
 
-shutil.copyfile('matcher.pyw','build/exe.win32-3.4/matcher.pyw')
+#shutil.copyfile('matcher.pyw','build/exe.win32-3.4/matcher.pyw')
 shutil.copytree('tkdnd2.8','build/exe.win32-3.4/tkdnd2.8')
 
 os.remove('build/exe.win32-3.4/unicodedata.pyd')
@@ -29,6 +29,8 @@ shutil.rmtree('build/exe.win32-3.4/tcl/msgs')
 shutil.rmtree('build/exe.win32-3.4/tk/demos')
 shutil.rmtree('build/exe.win32-3.4/tk/images')
 shutil.rmtree('build/exe.win32-3.4/tk/msgs')
+os.remove('build/exe.win32-3.4/tkdnd2.8/tkdnd_unix.tcl')
+os.remove('build/exe.win32-3.4/tkdnd2.8/tkdnd_macosx.tcl')
 
 os.rename('build/exe.win32-3.4','build/pyMatcher-exe.win32-3.4')
 

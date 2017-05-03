@@ -1,5 +1,6 @@
 import os
 import tkinter
+import ast # literal_eval
 
 def _load_tkdnd(master):
     master.tk.eval('global auto_path; lappend auto_path {tkdnd2.8}')
@@ -93,3 +94,8 @@ class TkDND(object):
             setattr(event, name, try_int(getattr(event, name)))
 
         return (event, )
+
+def _parse_list(tk,li):
+    tk.eval('set pym_items {%s}'%li)
+    ret=tk.eval(''' set r {}; foreach k $pym_items {lappend r "'$k'"}; set r "\[[join $r ,]\]" ''')
+    return ast.literal_eval(ret)
