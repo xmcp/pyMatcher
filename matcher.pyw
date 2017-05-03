@@ -97,6 +97,7 @@ class Panel:
 
     def __init__(self):
         self.timeoutvar=IntVar(value=1000)
+        self.should_halt=StringVar(value='off')
         self.msg=StringVar(value='加载中...')
 
         self.exefn=None
@@ -126,13 +127,14 @@ class Panel:
 
         Label(f, text=' ').grid(row=0, column=2)
 
-        Label(f, text='超时(ms):').grid(row=0, column=3, padx=2)
+        Label(f, text='超时(ms):').grid(row=0, column=3)
         self.timeoutentry = Entry(f, textvariable=self.timeoutvar, width=8)
         self.timeoutentry.grid(row=0, column=4)
         self.timeoutentry.bind('<Return>', lambda *_: self.jgbtn.invoke())
 
+        Checkbutton(f,text='出错时停止',variable=self.should_halt,onvalue='on',offvalue='off').grid(row=0, column=5, padx=3)
         self.jgbtn = Button(f, text='评测', command=self.judge, state='disabled')
-        self.jgbtn.grid(row=0, column=5, padx=2)
+        self.jgbtn.grid(row=0, column=6, padx=2)
 
         tf = Frame(self.b)
         tf.grid(row=1, column=0, sticky='nswe')
@@ -196,6 +198,7 @@ class Panel:
 
         def init12():
             ln=max(len1,len2)
+            errpos=None
             for pos in range(min(ln,self.MAX_LINE)):
                 if pos<len1:
                     t1.insert('end','%d\t'%(pos+1),'lineno')
@@ -211,12 +214,17 @@ class Panel:
                             t1.insert('end',data1[pos]+'↓\n','soso')
                         else:
                             t1.insert('end',data1[pos]+'↓\n','bad')
+                            if errpos is None:
+                                errpos=pos+1
                 else:
                     t1.insert('end','~\t','lineno','\n', 'bad' if data2[pos].rstrip() else 'soso')
                     t2.insert('end','%d\t'%(pos+1),'lineno', data2[pos]+'↓\n')
             if ln>self.MAX_LINE:
                 t1.insert('end','……\t 共 %d 行\n'%len1,'lineno')
                 t2.insert('end','……\t 共 %d 行\n'%len2,'lineno')
+            if errpos is not None:
+                #print(errpos)
+                Button(tl,text='→ 第 %d 行 ←'%errpos,command=lambda:t1.see('%d.end'%errpos)).grid(row=0,column=2,columnspan=3)
 
         def init0():
             len0=len(data0)
@@ -227,7 +235,7 @@ class Panel:
         
         def file_shower(txt,ext):
             def wrapped():
-                f=TempFile(prefix='pymatcher_',suffix=ext,content=txt)
+                f=TempFile(prefix='pyMatcher_%s_'%name,suffix=ext,content=txt)
                 tempfile_container[f.name]=f
                 os.startfile(f.name)
             return wrapped
@@ -372,7 +380,7 @@ class Panel:
             judgeanyway=False
             
             for pos,val in enumerate(self.data):
-                self.msg.set('正在评测 %d/%d...'%(pos+1,datacnt))
+                self.msg.set('正在评测 %d / %d...'%(pos+1,datacnt))
                 name_, i, o=val
                 self.tree.item(name_, values=['正在运行...', '...'])
                 self.tree.see(name_)
@@ -419,7 +427,7 @@ class Panel:
                         judgeanyway=True
                 
                 if killed or t>timeout*1000:
-                    self.tree.item(name_, values=['× 运行超时', t])
+                    self.tree.item(name_, values=['× 超时', t])
                 elif ret:
                     self.tree.item(name_, values=['× 返回值为%d' % ret, t])
                 elif perr:
@@ -430,12 +438,16 @@ class Panel:
                     [x.rstrip() for x in pout.rstrip().splitlines()]:
                     self.tree.item(name_, values=['✓ 通过', t])
                     accnt+=1
+                    continue # skip should_halt check later
                 elif [x.replace(' ','').replace('\t','') for x in o.strip().split('\n')]==\
                         [x.replace(' ','').replace('\t','') for x in pout.strip().split('\n')]:
                     self.tree.item(name_, values=['✓ 通过（格式错误）', t])
                     accnt+=1
                 else:
                     self.tree.item(name_, values=['× 结果错误', t])
+                    
+                if self.should_halt.get()=='on': # not AC in this point
+                    break
 
             if datacnt==accnt:
                 self.msg.set('您通过了全部 %d 组数据'%datacnt)
