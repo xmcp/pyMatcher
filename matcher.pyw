@@ -280,10 +280,6 @@ class Panel:
         if fn and os.path.isfile(fn):
             self.exefn=fn
             init_exe_path=os.path.split(fn)[0]
-            if os.path.isfile(os.path.splitext(fn)[0]+'.cpp'):
-                self.sourcefn=os.path.splitext(fn)[0]+'.cpp'
-            else:
-                self.sourcefn=None
             self.exebtn['text']='程序 ✓'
             book.tab(self.b,text=' %s '%os.path.basename(self.exefn))
             if self.data:
@@ -354,6 +350,7 @@ class Panel:
             datacnt=len(self.data)
             accnt=0
             out_already_exists=os.path.isfile(os.path.splitext(self.exefn)[0]+'.out')
+            limit_bonus_used=False
             
             for pos,val in enumerate(self.data):
                 self.msg.set('正在评测 %d / %d...'%(pos+1,datacnt))
@@ -364,7 +361,7 @@ class Panel:
 
                 killed=False
                 if timeout:
-                    timer=threading.Timer(timeout*1.5,killer)
+                    timer=threading.Timer(timeout*(1 if limit_bonus_used else 2),killer)
                  
                 p=subprocess.Popen(
                     executable=self.exefn,args=[],shell=True,creationflags=subprocess_flags,
@@ -384,11 +381,13 @@ class Panel:
                 ret=p.wait()
 
                 t2=time.time()
-                if timeout:
+                if timeout and not killed:
                     timer.cancel()
                 self.tree.item(name_, values=['正在评测...', '...'])
                 self.output[name_]=pout
 
+                if not limit_bonus_used and killed:
+                    limit_bonus_used=True
                 if pos==0:
                     if (
                         pout and '请按任意键继续' in pout and not \
@@ -403,28 +402,30 @@ class Panel:
                         return
                 
                 t=int(1000*(t2-t1))
+                tstr=('>' if killed else '')+str(t)
+                
                 if not o.endswith('\n'): o+='\n'
                 if not pout.endswith('\n'): pout+='\n'
                 if killed or (timeout and t>timeout*1000):
-                    self.tree.item(name_, values=['× 超时', t])
+                    self.tree.item(name_, values=['× 超时', tstr])
                 elif ret:
-                    self.tree.item(name_, values=['× 返回值为%d' % ret, t])
+                    self.tree.item(name_, values=['× 返回值为%d' % ret, tstr])
                 elif perr:
-                    self.tree.item(name_, values=['× STDERR不为空', t])
+                    self.tree.item(name_, values=['× STDERR不为空', tstr])
                 elif pout=='\n': # as we added a \n at the end
-                    self.tree.item(name_, values=['× 没有输出', t])
+                    self.tree.item(name_, values=['× 没有输出', tstr])
                 elif [x.rstrip() for x in o.rstrip().splitlines()]==\
                     [x.rstrip() for x in pout.rstrip().splitlines()]:
-                    self.tree.item(name_, values=['✓ 通过', t])
+                    self.tree.item(name_, values=['✓ 通过', tstr])
                     accnt+=1
                     continue # skip should_halt check later
                 elif [x.replace(' ','').replace('\t','') for x in o.strip().split('\n')]==\
                         [x.replace(' ','').replace('\t','') for x in pout.strip().split('\n')]:
-                    self.tree.item(name_, values=['✓ 格式错误', t])
+                    self.tree.item(name_, values=['✓ 格式错误', tstr])
                     accnt+=1
                     continue
                 else:
-                    self.tree.item(name_, values=['× 结果错误', t])
+                    self.tree.item(name_, values=['× 结果错误', tstr])
                     
                 if self.should_halt.get()=='on': # not AC in this point
                     break
@@ -454,12 +455,13 @@ class Panel:
             messagebox.showerror('pyMatcher','超时时间无效')
             return
 
-        if self.sourcefn and os.stat(self.sourcefn).st_mtime>os.stat(self.exefn).st_mtime:
-            if not messagebox.askyesno('pyMatcher',
-                '源代码修改时间新于选手程序修改时间\n您可能没有编译新修改的代码\n仍然继续评测吗？'):
-                return
-            else:
-                shutil.copystat(self.sourcefn,self.exefn)
+        sourcefn=os.path.splitext(self.exefn)[0]+'.cpp'
+        if os.path.isfile(sourcefn) and os.stat(sourcefn).st_mtime>os.stat(self.exefn).st_mtime:
+                if not messagebox.askyesno('pyMatcher',
+                    '源代码修改时间新于选手程序修改时间\n您可能没有编译新修改的代码\n仍然继续评测吗？'):
+                    return
+                else:
+                    shutil.copystat(sourcefn,self.exefn)
 
         self.msg.set('正在启动评测...')
         self.output={}
